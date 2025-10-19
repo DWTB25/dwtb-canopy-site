@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DWTB Solar Canopy</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f5f7fa;
+      color: #222;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 0.5em;
+    }
+    p {
+      font-size: 1.2em;
+      color: #555;
+    }
+    .main-image {
+      margin-top: 20px;
+      width: 90%;
+      max-width: 600px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    #cam {
+      width: 100%;
+      max-width: 640px;
+      height: auto;
+      margin: 20px auto;
+      display: block;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 1.8em;
+      }
+      #cam {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Test, Canopy Website</h1>
+  <p>Data and Live Stream Coming Soon!</p>
+  <img src="images/pictest00.jpg" alt="canopy Image" class="main-image">
+  <video id="cam" controls autoplay muted playsinline></video>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+  const url = 'https://stream.dwtb-solar-canopy.org/arguspt/index.m3u8';
+  const v = document.getElementById('cam');
+  
+  if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari native HLS support
+    v.src = url;
+    v.addEventListener('loadedmetadata', () => v.play());
+    v.addEventListener('error', e => {
+      console.error('Native HLS error', e);
+      setTimeout(() => location.reload(), 5000);
+    });
+  } else if (Hls.isSupported()) {
+    // Use hls.js for other browsers
+    const hls = new Hls({ 
+      lowLatencyMode: false,
+      backBufferLength: 10,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+      liveSyncDuration: 5,
+      liveMaxLatencyDuration: 15,
+      highBufferWatchdogPeriod: 2,
+      maxBufferHole: 0.5,
+      enableWorker: true,
+      startFragPrefetch: true
+    }); 
+    
+    hls.on(Hls.Events.ERROR, (e, d) => {
+      if (d.fatal) {
+        console.error('hls.js error', d);
+        if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          console.log('Network error, trying to recover...');
+          hls.startLoad();
+        } else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          console.log('Media error, trying to recover...');
+          hls.recoverMediaError();
+        } else {
+          console.log('Fatal error, reloading in 5 seconds...');
+          setTimeout(() => location.reload(), 5000);
+        }
+      }
+    });
+    
+    hls.loadSource(url);
+    hls.attachMedia(v);
+  } else {
+    v.outerHTML = `<p>Your browser does not support HLS playback.</p>`;
+  }
+</script>
+</body>
+</html>
