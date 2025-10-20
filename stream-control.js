@@ -1,16 +1,14 @@
 // ========================================
 // Reolink On-Demand Stream Integration
 // ========================================
-//https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8
 // Configuration
 const CONFIG = {
     streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
     apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
-    //cloudflareStreamUrl: 'https://customer-XXXXX.cloudflarestream.com/YOUR_VIDEO_ID/manifest/video.m3u8',
     cloudflareStreamUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8', 
-    streamDuration: 300000, // 5 minutes in milliseconds
-    startupDelay: 3000, // Wait 3 seconds for stream to initialize
-    statusCheckInterval: 10000 // Check status every 10 seconds
+    streamDuration: 300000,
+    startupDelay: 3000,
+    statusCheckInterval: 10000
 };
 
 // State management
