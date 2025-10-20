@@ -24,6 +24,7 @@ let streamState = {
 // API Functions
 // ========================================
 
+/*
 async function startStream() {
     try {
         const response = await fetch(`${CONFIG.streamApiUrl}/stream/start?api_key=${CONFIG.apiKey}`, {
@@ -46,7 +47,37 @@ async function startStream() {
         console.error('Error starting stream:', error);
         return false;
     }
+}*/
+
+
+//Gaby Added
+async function startStream() {
+    try {
+        const response = await fetch(`${CONFIG.streamApiUrl}/stream/start?api_key=${CONFIG.apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        console.log('Stream start response:', data);
+        
+        // ADD 'starting' HERE:
+        if (data.status === 'started' || data.status === 'starting' || data.status === 'already_running') {
+            return true;
+        } else {
+            console.error('Failed to start stream:', data);
+            return false;
+        }
+    } catch (error) {
+        console.error('Error starting stream:', error);
+        return false;
+    }
 }
+
+
+
 
 async function checkStreamStatus() {
     try {
