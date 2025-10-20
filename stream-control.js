@@ -313,7 +313,7 @@ function initializeHLSPlayer(url) {
     // Use HLS.js for other browsers
     else if (window.Hls && Hls.isSupported()) {
         console.log('Using HLS.js');
-        hlsInstance = new Hls({
+        /*hlsInstance = new Hls({ //Gaby took out 2
             // Live streaming optimizations
             enableWorker: true,
             lowLatencyMode: true,
@@ -346,12 +346,50 @@ function initializeHLSPlayer(url) {
             fragLoadingTimeOut: 20000,
             fragLoadingMaxRetry: 6,
             fragLoadingRetryDelay: 500
-        });
+        });*/
+
+        hlsInstance = new Hls({
+        // Less aggressive live settings
+        enableWorker: true,
+        lowLatencyMode: false,  // Changed from true
+    
+        // Start much closer to live edge
+        liveSyncDurationCount: 7,  // Changed from 3 - allow more buffer
+        liveMaxLatencyDurationCount: 15,  // Changed from 10
+        liveDurationInfinity: true,
+    
+        // More buffer to prevent stuttering
+        maxBufferLength: 60,  // Changed from 30
+        maxMaxBufferLength: 120,  // Changed from 60
+        backBufferLength: 90,
+    
+        // Fragment loading
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 1.0,  // Changed from 0.5 - more tolerant
+    
+        // Manifest refresh - slower
+        manifestLoadingTimeOut: 10000,
+        manifestLoadingMaxRetry: 10,  // More retries
+        manifestLoadingRetryDelay: 1000,  // Longer delay
+    
+        // Level loading
+        levelLoadingTimeOut: 10000,
+        levelLoadingMaxRetry: 10,
+        levelLoadingRetryDelay: 1000,
+    
+        // Fragment loading  
+        fragLoadingTimeOut: 20000,
+        fragLoadingMaxRetry: 10,
+        fragLoadingRetryDelay: 1000,
+    
+        // Start from live edge
+        startPosition: -1  // -1 means start at live edge
+    });
 
         hlsInstance.loadSource(url);
         hlsInstance.attachMedia(videoPlayer);
 
-        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        /*hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { //Gaby took out 2
             console.log('HLS manifest parsed, starting playback');
             
             // For live streams, seek to live edge
@@ -364,7 +402,21 @@ function initializeHLSPlayer(url) {
                 updatePlayButton('error');
                 alert('Failed to play video. Please try again.');
             });
+        });*/
+
+
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('HLS manifest parsed, starting playback');
+    
+        // Just play - let HLS.js handle live positioning
+        videoPlayer.play().catch(err => {
+        console.error('Error playing video:', err);
+        updatePlayButton('error');
+        alert('Failed to play video. Please try again.');
         });
+    });
+
+        
         
         // Keep syncing to live edge
         //Gaby took out
