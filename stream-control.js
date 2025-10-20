@@ -367,13 +367,14 @@ function initializeHLSPlayer(url) {
         });
         
         // Keep syncing to live edge
-        hlsInstance.on(Hls.Events.FRAG_LOADED, () => {
+        //Gaby took out
+        /*hlsInstance.on(Hls.Events.FRAG_LOADED, () => {
             // Ensure we're near the live edge
             if (hlsInstance.liveSyncPosition && videoPlayer.currentTime < hlsInstance.liveSyncPosition - 10) {
                 console.log('Catching up to live edge');
                 videoPlayer.currentTime = hlsInstance.liveSyncPosition - 3;
             }
-        });
+        });*/
 
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
             console.error('HLS error:', data);
@@ -461,8 +462,9 @@ function setupVideoPlayerEvents() {
             }, 1000);
         }
     });
-    
-    videoPlayer.addEventListener('pause', () => {
+
+    //Gaby Took Out
+    /*videoPlayer.addEventListener('pause', () => {
         // Auto-resume if paused unexpectedly during streaming
         if (streamState.isStreaming && !videoPlayer.seeking) {
             console.log('Video paused unexpectedly, resuming...');
@@ -473,7 +475,7 @@ function setupVideoPlayerEvents() {
                 videoPlayer.play();
             }, 500);
         }
-    });
+    });*/
 }
 
 // ========================================
