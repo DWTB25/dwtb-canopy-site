@@ -1,7 +1,7 @@
 // ========================================
 // Reolink On-Demand Stream Integration
 // ========================================
-https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8
+//https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8
 // Configuration
 const CONFIG = {
     streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
