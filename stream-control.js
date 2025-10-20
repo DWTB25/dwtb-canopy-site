@@ -1,17 +1,16 @@
 // ========================================
 // Reolink On-Demand Stream Integration
 // ========================================
+
 // Configuration
 const CONFIG = {
     streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
     apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
-    cloudflareStreamUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8', 
-    streamDuration: 300000,
-    //startupDelay: 3000, gaby changed
-    startupDelay: 10000,
-    statusCheckInterval: 10000
+    cloudflareStreamUrl: 'https://customer-XXXXX.cloudflarestream.com/YOUR_VIDEO_ID/manifest/video.m3u8',
+    streamDuration: 300000, // 5 minutes in milliseconds
+    startupDelay: 3000, // Wait 3 seconds for stream to initialize
+    statusCheckInterval: 10000 // Check status every 10 seconds
 };
-
 
 // State management
 let streamState = {
@@ -25,7 +24,7 @@ let streamState = {
 // API Functions
 // ========================================
 
-/*async function startStream() {
+async function startStream() {
     try {
         const response = await fetch(`${CONFIG.streamApiUrl}/stream/start?api_key=${CONFIG.apiKey}`, {
             method: 'POST',
@@ -47,36 +46,7 @@ let streamState = {
         console.error('Error starting stream:', error);
         return false;
     }
-}*/
-
-
-//Gaby added
-async function startStream() {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/stream/start?api_key=${CONFIG.apiKey}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        console.log('Stream start response:', data);
-        
-        if (data.status === 'started' || data.status === 'starting' || data.status === 'already_running') {
-            return true;
-        } else {
-            console.error('Failed to start stream:', data);
-            return false;
-        }
-    } catch (error) {
-        console.error('Error starting stream:', error);
-        return false;
-    }
 }
-
-
-
 
 async function checkStreamStatus() {
     try {
@@ -312,9 +282,38 @@ function initializeHLSPlayer(url) {
     else if (window.Hls && Hls.isSupported()) {
         console.log('Using HLS.js');
         hlsInstance = new Hls({
-            lowLatencyMode: false,
+            // Live streaming optimizations
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 90,
+            
+            // Start at live edge
             liveSyncDurationCount: 3,
-            enableWorker: true
+            liveMaxLatencyDurationCount: 10,
+            liveDurationInfinity: true,
+            
+            // Aggressive live sync
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            
+            // Fragment loading
+            maxBufferSize: 60 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            
+            // Manifest refresh
+            manifestLoadingTimeOut: 10000,
+            manifestLoadingMaxRetry: 6,
+            manifestLoadingRetryDelay: 500,
+            
+            // Level loading
+            levelLoadingTimeOut: 10000,
+            levelLoadingMaxRetry: 6,
+            levelLoadingRetryDelay: 500,
+            
+            // Fragment loading  
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 6,
+            fragLoadingRetryDelay: 500
         });
 
         hlsInstance.loadSource(url);
@@ -322,11 +321,26 @@ function initializeHLSPlayer(url) {
 
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
             console.log('HLS manifest parsed, starting playback');
+            
+            // For live streams, seek to live edge
+            if (hlsInstance.liveSyncPosition) {
+                videoPlayer.currentTime = hlsInstance.liveSyncPosition;
+            }
+            
             videoPlayer.play().catch(err => {
                 console.error('Error playing video:', err);
                 updatePlayButton('error');
                 alert('Failed to play video. Please try again.');
             });
+        });
+        
+        // Keep syncing to live edge
+        hlsInstance.on(Hls.Events.FRAG_LOADED, () => {
+            // Ensure we're near the live edge
+            if (hlsInstance.liveSyncPosition && videoPlayer.currentTime < hlsInstance.liveSyncPosition - 10) {
+                console.log('Catching up to live edge');
+                videoPlayer.currentTime = hlsInstance.liveSyncPosition - 3;
+            }
         });
 
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
@@ -397,6 +411,35 @@ function setupVideoPlayerEvents() {
         console.log('Video ended event');
         if (streamState.isStreaming) {
             handleStreamEnded();
+        }
+    });
+    
+    // Handle stalling/buffering for live streams
+    videoPlayer.addEventListener('waiting', () => {
+        console.log('Video waiting/buffering...');
+    });
+    
+    videoPlayer.addEventListener('stalled', () => {
+        console.log('Video stalled, attempting recovery');
+        if (streamState.isStreaming && hlsInstance && hlsInstance.liveSyncPosition) {
+            // Jump to live edge if stalled
+            setTimeout(() => {
+                videoPlayer.currentTime = hlsInstance.liveSyncPosition - 2;
+                videoPlayer.play();
+            }, 1000);
+        }
+    });
+    
+    videoPlayer.addEventListener('pause', () => {
+        // Auto-resume if paused unexpectedly during streaming
+        if (streamState.isStreaming && !videoPlayer.seeking) {
+            console.log('Video paused unexpectedly, resuming...');
+            setTimeout(() => {
+                if (hlsInstance && hlsInstance.liveSyncPosition) {
+                    videoPlayer.currentTime = hlsInstance.liveSyncPosition - 2;
+                }
+                videoPlayer.play();
+            }, 500);
         }
     });
 }
