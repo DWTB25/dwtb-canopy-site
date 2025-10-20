@@ -7,7 +7,8 @@ const CONFIG = {
     apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
     cloudflareStreamUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8', 
     streamDuration: 300000,
-    startupDelay: 3000,
+    //startupDelay: 3000, gaby changed
+    startupDelay: 10000,
     statusCheckInterval: 10000
 };
 
@@ -23,7 +24,7 @@ let streamState = {
 // API Functions
 // ========================================
 
-async function startStream() {
+/*async function startStream() {
     try {
         const response = await fetch(`${CONFIG.streamApiUrl}/stream/start?api_key=${CONFIG.apiKey}`, {
             method: 'POST',
@@ -45,7 +46,36 @@ async function startStream() {
         console.error('Error starting stream:', error);
         return false;
     }
+}*/
+
+
+//Gaby added
+async function startStream() {
+    try {
+        const response = await fetch(`${CONFIG.streamApiUrl}/stream/start?api_key=${CONFIG.apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        console.log('Stream start response:', data);
+        
+        if (data.status === 'started' || data.status === 'starting' || data.status === 'already_running') {
+            return true;
+        } else {
+            console.error('Failed to start stream:', data);
+            return false;
+        }
+    } catch (error) {
+        console.error('Error starting stream:', error);
+        return false;
+    }
 }
+
+
+
 
 async function checkStreamStatus() {
     try {
