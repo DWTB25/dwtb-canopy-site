@@ -6,8 +6,7 @@
 const CONFIG = {
     streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
     apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
-    //cloudflareStreamUrl: 'https://customer-XXXXX.cloudflarestream.com/YOUR_VIDEO_ID/manifest/video.m3u8',
-    cloudflareStreamUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8',
+    cloudflareStreamUrl: 'https://customer-XXXXX.cloudflarestream.com/YOUR_VIDEO_ID/manifest/video.m3u8',
     streamDuration: 300000, // 5 minutes in milliseconds
     startupDelay: 3000, // Wait 3 seconds for stream to initialize
     statusCheckInterval: 10000 // Check status every 10 seconds
@@ -182,12 +181,8 @@ function stopStatusChecking() {
 function handleStreamEnded() {
     console.log('Stream ended');
     
-    // Stop the video player
-    const videoPlayer = document.getElementById('video-player');
-    if (videoPlayer) {
-        videoPlayer.pause();
-        videoPlayer.src = '';
-    }
+    // Stop the HLS player
+    stopHLSPlayer();
     
     // Update state
     streamState.isStreaming = false;
@@ -222,16 +217,17 @@ async function handlePlayButtonClick() {
         streamState.isStreaming = true;
         streamState.streamStartTime = Date.now();
         
-        // Start the video player
-        const videoPlayer = document.getElementById('video-player');
-        if (videoPlayer) {
-            videoPlayer.src = CONFIG.cloudflareStreamUrl;
-            videoPlayer.play().catch(err => {
-                console.error('Error playing video:', err);
-                updatePlayButton('error');
-                alert('Failed to play video. Please try again.');
-                return;
-            });
+        // Initialize HLS player with the stream URL
+        console.log('Initializing HLS player with URL:', CONFIG.cloudflareStreamUrl);
+        const playerStarted = initializeHLSPlayer(CONFIG.cloudflareStreamUrl);
+        
+        if (!playerStarted) {
+            console.error('Failed to initialize video player');
+            updatePlayButton('error');
+            alert('Failed to initialize video player. Please try again.');
+            streamState.isStreaming = false;
+            streamState.streamStartTime = null;
+            return;
         }
         
         // Update UI
@@ -249,6 +245,103 @@ async function handlePlayButtonClick() {
         console.error('Error in handlePlayButtonClick:', error);
         updatePlayButton('error');
         alert('An error occurred. Please try again.');
+    }
+}
+
+// ========================================
+// HLS Player Setup
+// ========================================
+
+let hlsInstance = null;
+
+function initializeHLSPlayer(url) {
+    const videoPlayer = document.getElementById('video-player');
+    if (!videoPlayer) {
+        console.error('Video player element not found');
+        return false;
+    }
+
+    // Destroy existing HLS instance if any
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
+
+    // Check if browser supports native HLS (Safari/iOS)
+    if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+        console.log('Using native HLS support');
+        videoPlayer.src = url;
+        videoPlayer.play().catch(err => {
+            console.error('Error playing video:', err);
+            updatePlayButton('error');
+            alert('Failed to play video. Please try again.');
+        });
+        return true;
+    }
+    // Use HLS.js for other browsers
+    else if (window.Hls && Hls.isSupported()) {
+        console.log('Using HLS.js');
+        hlsInstance = new Hls({
+            lowLatencyMode: false,
+            liveSyncDurationCount: 3,
+            enableWorker: true
+        });
+
+        hlsInstance.loadSource(url);
+        hlsInstance.attachMedia(videoPlayer);
+
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+            console.log('HLS manifest parsed, starting playback');
+            videoPlayer.play().catch(err => {
+                console.error('Error playing video:', err);
+                updatePlayButton('error');
+                alert('Failed to play video. Please try again.');
+            });
+        });
+
+        hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+            console.error('HLS error:', data);
+            if (data.fatal) {
+                switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.log('Network error, attempting recovery...');
+                        hlsInstance.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.log('Media error, attempting recovery...');
+                        hlsInstance.recoverMediaError();
+                        break;
+                    default:
+                        console.error('Fatal error, cannot recover');
+                        if (streamState.isStreaming) {
+                            updatePlayButton('error');
+                            alert('Stream playback error. Please try restarting the stream.');
+                        }
+                        break;
+                }
+            }
+        });
+
+        return true;
+    } else {
+        console.error('HLS not supported in this browser');
+        alert('Your browser does not support HLS video playback.');
+        return false;
+    }
+}
+
+function stopHLSPlayer() {
+    const videoPlayer = document.getElementById('video-player');
+    
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
+    
+    if (videoPlayer) {
+        videoPlayer.pause();
+        videoPlayer.src = '';
+        videoPlayer.load();
     }
 }
 
