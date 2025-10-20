@@ -12,6 +12,7 @@ const CONFIG = {
     statusCheckInterval: 10000
 };
 
+
 // State management
 let streamState = {
     isStreaming: false,
