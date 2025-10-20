@@ -178,9 +178,14 @@ function updateRemainingTime() {
 // Stream Management
 // ========================================
 
-function startStatusChecking() {
+/*function startStatusChecking() {
     // Check stream status periodically
-    streamState.statusCheckTimer = setInterval(async () => {
+    streamState.statusCheckTimer = setInterval(async () => {*/ //Gaby took out 3
+function startStatusChecking() {
+    // Wait 20 seconds before starting status checks (give stream time to stabilize)
+    setTimeout(() => {
+        // Check stream status periodically
+        streamState.statusCheckTimer = setInterval(async () => {
         const isActive = await checkStreamStatus();
         if (!isActive && streamState.isStreaming) {
             // Stream stopped unexpectedly
@@ -188,6 +193,7 @@ function startStatusChecking() {
             handleStreamEnded();
         }
     }, CONFIG.statusCheckInterval);
+    }, 20000);
     
     // Update remaining time display every second
     const timeUpdateTimer = setInterval(() => {
