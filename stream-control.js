@@ -488,7 +488,7 @@ function setupVideoPlayerEvents() {
     const videoPlayer = document.getElementById('video-player');
     if (!videoPlayer) return;
     
-    videoPlayer.addEventListener('error', (e) => {
+    /*videoPlayer.addEventListener('error', (e) => { //gaby took out 5
         console.error('Video player error:', e);
         if (streamState.isStreaming) {
             // If we're supposed to be streaming, show error
@@ -496,7 +496,27 @@ function setupVideoPlayerEvents() {
             alert('Video playback error. The stream may have ended or encountered an issue.');
             handleStreamEnded();
         }
-    });
+    });*/
+
+
+    videoPlayer.addEventListener('error', (e) => {
+    console.error('Video player error:', e);
+    if (streamState.isStreaming) {
+        // Check if this is just the stream ending naturally
+        const elapsed = Date.now() - streamState.streamStartTime;
+        
+        if (elapsed >= CONFIG.streamDuration - 5000) {
+            // Stream ended naturally (within 5 seconds of expected end)
+            console.log('Stream ended as expected');
+            handleStreamEnded();
+        } else {
+            // Unexpected error
+            updatePlayButton('error');
+            alert('Video playback error. The stream may have ended unexpectedly.');
+            handleStreamEnded();
+        }
+    }
+});
     
     videoPlayer.addEventListener('ended', () => {
         console.log('Video ended event');
