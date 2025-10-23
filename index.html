@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DWTB Solar Canopy</title>
+  <title>DWTB Solar Canopy - Live Cameras</title>
   <style>
     body { 
       font-family: Arial, sans-serif; 
@@ -29,26 +29,44 @@
       box-shadow:0 4px 10px rgba(0,0,0,.1); 
     }
     
-    /* Stream Container */
-    .stream-container {
+    /* Camera Grid */
+    .cameras-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 30px;
+      max-width: 1400px;
       margin: 40px auto;
-      max-width: 900px;
+      padding: 0 20px;
+    }
+    
+    /* Individual Camera Card */
+    .camera-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .camera-card h2 {
+      margin-top: 0;
+      color: #333;
+      font-size: 1.5em;
     }
     
     /* Video Player */
-    #video-player { 
-      width:100%; 
-      max-width:640px; 
-      height:auto; 
-      margin:20px auto; 
-      display:block; 
-      border-radius:8px; 
-      box-shadow:0 4px 10px rgba(0,0,0,.2); 
-      background:#000;
+    .video-player { 
+      width: 100%; 
+      max-width: 640px; 
+      height: auto; 
+      margin: 20px auto; 
+      display: block; 
+      border-radius: 8px; 
+      box-shadow: 0 4px 10px rgba(0,0,0,.2); 
+      background: #000;
     }
     
     /* Play Button */
-    #play-button {
+    .play-button {
       padding: 15px 40px;
       font-size: 18px;
       font-weight: bold;
@@ -61,25 +79,27 @@
       display: block;
       transition: all 0.3s ease;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      width: 100%;
+      max-width: 300px;
     }
     
-    #play-button:hover:not(:disabled) {
+    .play-button:hover:not(:disabled) {
       background: #45a049;
       transform: translateY(-2px);
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     }
     
-    #play-button:disabled {
+    .play-button:disabled {
       background: #ccc;
       cursor: not-allowed;
       transform: none;
     }
     
-    #play-button.loading {
+    .play-button.loading {
       background: #ff9800;
     }
     
-    #play-button.streaming {
+    .play-button.streaming {
       background: #f44336;
       animation: pulse 2s infinite;
     }
@@ -90,11 +110,12 @@
     }
     
     /* Status Text */
-    #stream-status { 
+    .stream-status { 
       font-size: 1em; 
       color: #666; 
       margin-top: 10px;
       font-weight: bold;
+      min-height: 24px;
     }
     
     .note { 
@@ -103,41 +124,65 @@
       margin-top: 8px; 
     }
     
-    @media (max-width:768px) { 
-      h1 { font-size:1.8em; }
-      #video-player { max-width:100%; }
-      #play-button { font-size: 16px; padding: 12px 30px; }
+    @media (max-width: 768px) { 
+      h1 { font-size: 1.8em; }
+      .cameras-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      .play-button { 
+        font-size: 16px; 
+        padding: 12px 30px; 
+      }
     }
   </style>
 </head>
 <body>
   <h1>DWTB Solar Canopy</h1>
-  <p>Real-time3 monitoring and live stream</p>
+  <p>Real-time monitoring with dual camera live streams</p>
   <img src="images/pictest00.jpg" alt="Canopy Image" class="main-image" />
 
-  <!-- Live Stream Section -->
-  <div class="stream-container">
-    <h2>Live Camera Feed</h2>
-    <p class="note">Click the button below to start the live stream (runs for 5 minutes)</p>
+  <!-- Dual Camera Grid -->
+  <div class="cameras-container">
     
-    <!-- Video Player -->
-    <video id="video-player" controls>
-      Your browser doesn't support video playback.
-    </video>
-    
-    <!-- Play Button -->
-    <button id="play-button">
-      ▶️ Play Live Stream
-    </button>
-    
-    <!-- Status Text -->
-    <p id="stream-status">Ready to stream</p>
+    <!-- Camera 1 -->
+    <div class="camera-card">
+      <h2>📹 Camera 1</h2>
+      <p class="note">Click to start 5-minute live stream</p>
+      
+      <video id="video-player-cam1" class="video-player" controls>
+        Your browser doesn't support video playback.
+      </video>
+      
+      <button id="play-button-cam1" class="play-button">
+        ▶️ Play Camera 1
+      </button>
+      
+      <p id="stream-status-cam1" class="stream-status">Ready to stream</p>
+    </div>
+
+    <!-- Camera 2 -->
+    <div class="camera-card">
+      <h2>📹 Camera 2</h2>
+      <p class="note">Click to start 5-minute live stream</p>
+      
+      <video id="video-player-cam2" class="video-player" controls>
+        Your browser doesn't support video playback.
+      </video>
+      
+      <button id="play-button-cam2" class="play-button">
+        ▶️ Play Camera 2
+      </button>
+      
+      <p id="stream-status-cam2" class="stream-status">Ready to stream</p>
+    </div>
+
   </div>
 
   <!-- Load HLS.js for video playback -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   
-  <!-- Load the stream control script -->
-  <script src="stream-control.js"></script>
+  <!-- Load the dual-camera stream control script -->
+  <script src="stream-control-dual.js"></script>
 </body>
 </html>
