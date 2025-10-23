@@ -767,7 +767,7 @@ function setupChartControls() {
 }
 
 // Add to initialization
-function initializeStreamControls() {
+/*function initializeStreamControls() {
     console.log('Initializing dual camera stream controls and sensors');
     
     // Initialize cameras
@@ -785,4 +785,19 @@ window.sensorControls = {
     start: startSensorUpdates,
     stop: stopSensorUpdates,
     updateChart: updateChart
-};
+};*/
+
+function initializeStreamControls() {
+  console.log('Initializing dual camera stream controls and sensors');
+
+  // Initialize cameras
+  initializeCamera('cam1');
+  initializeCamera('cam2');
+
+  // Initialize chart + controls
+  initializeChart();
+  setupChartControls();
+
+  // Start sensor updates (also triggers updateChart periodically)
+  startSensorUpdates();
+}
