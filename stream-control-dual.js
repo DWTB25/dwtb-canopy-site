@@ -1,7 +1,7 @@
 // ========================================
 // Dual Camera On-Demand Stream Integration
 // ========================================
-//GABY0
+//GABY1
 // Configuration
 const CONFIG = {
     streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
@@ -461,6 +461,10 @@ function initializeStreamControls() {
     initializeCamera('cam1');
     initializeCamera('cam2');
     
+    // Initialize chart
+    initializeChart();
+    setupChartControls();
+    
     // Initialize sensor updates
     startSensorUpdates();
 }
@@ -490,6 +494,8 @@ window.streamControls = {
 // ========================================
 
 let sensorUpdateTimer = null;
+let chart = null;
+let currentTimeRange = 60; // Default: last 60 data points
 
 async function fetchSensorData() {
     try {
@@ -508,6 +514,28 @@ async function fetchSensorData() {
         console.error('Error fetching sensor data:', error);
         showSensorError('Connection error');
         return false;
+    }
+}
+
+async function fetchSensorHistory(limit = null) {
+    try {
+        let url = `${CONFIG.streamApiUrl}/sensor/history`;
+        if (limit) {
+            url += `?limit=${limit}`;
+        }
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        
+        if (result.status === 'ok' && result.data) {
+            return result.data;
+        } else {
+            console.error('Sensor history error:', result);
+            return [];
+        }
+    } catch (error) {
+        console.error('Error fetching sensor history:', error);
+        return [];
     }
 }
 
@@ -559,10 +587,12 @@ function startSensorUpdates() {
     
     // Fetch immediately
     fetchSensorData();
+    updateChart();
     
     // Then fetch every 10 seconds
     sensorUpdateTimer = setInterval(() => {
         fetchSensorData();
+        updateChart();
     }, CONFIG.sensorUpdateInterval);
 }
 
@@ -571,6 +601,169 @@ function stopSensorUpdates() {
         clearInterval(sensorUpdateTimer);
         sensorUpdateTimer = null;
     }
+}
+
+// ========================================
+// Chart Functions
+// ========================================
+
+function initializeChart() {
+    const canvas = document.getElementById('sensor-chart');
+    if (!canvas) {
+        console.error('Chart canvas not found');
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: 'rgb(245, 87, 108)',
+                    backgroundColor: 'rgba(245, 87, 108, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    yAxisID: 'y-temp'
+                },
+                {
+                    label: 'Humidity (%)',
+                    data: [],
+                    borderColor: 'rgb(0, 242, 254)',
+                    backgroundColor: 'rgba(0, 242, 254, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    yAxisID: 'y-hum'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            label += context.parsed.y.toFixed(1);
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                },
+                'y-temp': {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Temperature (°C)',
+                        color: 'rgb(245, 87, 108)'
+                    },
+                    grid: {
+                        drawOnChartArea: true,
+                    },
+                },
+                'y-hum': {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Humidity (%)',
+                        color: 'rgb(0, 242, 254)'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                    min: 0,
+                    max: 100
+                }
+            }
+        }
+    });
+    
+    console.log('Chart initialized');
+}
+
+async function updateChart() {
+    if (!chart) {
+        console.error('Chart not initialized');
+        return;
+    }
+    
+    const limit = currentTimeRange === 'all' ? null : currentTimeRange;
+    const history = await fetchSensorHistory(limit);
+    
+    if (history.length === 0) {
+        console.log('No history data yet');
+        return;
+    }
+    
+    // Prepare data
+    const labels = history.map(d => {
+        const date = new Date(d.timestamp);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+    
+    const temperatures = history.map(d => d.temperature);
+    const humidities = history.map(d => d.humidity);
+    
+    // Update chart
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = temperatures;
+    chart.data.datasets[1].data = humidities;
+    chart.update('none'); // 'none' = no animation for smooth updates
+    
+    console.log(`Chart updated with ${history.length} data points`);
+}
+
+function setupChartControls() {
+    const buttons = document.querySelectorAll('.time-range-btn');
+    
+    buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Remove active class from all buttons
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            // Add active class to clicked button
+            button.classList.add('active');
+            
+            // Update time range
+            const range = button.getAttribute('data-range');
+            currentTimeRange = range === 'all' ? 'all' : parseInt(range);
+            
+            // Update chart
+            updateChart();
+        });
+    });
 }
 
 // Add to initialization
@@ -588,6 +781,8 @@ function initializeStreamControls() {
 // Expose sensor controls for testing
 window.sensorControls = {
     fetch: fetchSensorData,
+    fetchHistory: fetchSensorHistory,
     start: startSensorUpdates,
-    stop: stopSensorUpdates
+    stop: stopSensorUpdates,
+    updateChart: updateChart
 };
