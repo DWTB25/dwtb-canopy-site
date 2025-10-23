@@ -1,803 +1,534 @@
 // ========================================
 // Dual Camera On-Demand Stream Integration
 // ========================================
-//GABY1
+
+//GABY2
 // Configuration
 const CONFIG = {
-    streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
-    apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
-    cameras: {
-        cam1: {
-            id: 'cam1',
-            name: 'Camera 1',
-            playbackUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8'
-        },
-        cam2: {
-            id: 'cam2',
-            name: 'Camera 2',
-            playbackUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/4aabdd6cb03fb70149fb583b3ffa66bd/manifest/video.m3u8'
-        }
-    },
-    streamDuration: 300000, // 5 minutes in milliseconds
-    startupDelay: 15000, // Wait 15 seconds for stream to initialize
-    statusCheckInterval: 10000, // Check status every 10 seconds
-    sensorUpdateInterval: 10000 // Update sensor data every 10 seconds
-};
-
-// State management for each camera
-const cameraStates = {
+  streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
+  apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
+  cameras: {
     cam1: {
-        isStreaming: false,
-        streamStartTime: null,
-        statusCheckTimer: null,
-        autoStopTimer: null,
-        hlsInstance: null
+      id: 'cam1',
+      name: 'Camera 1',
+      playbackUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8'
     },
     cam2: {
-        isStreaming: false,
-        streamStartTime: null,
-        statusCheckTimer: null,
-        autoStopTimer: null,
-        hlsInstance: null
+      id: 'cam2',
+      name: 'Camera 2',
+      playbackUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/4aabdd6cb03fb70149fb583b3ffa66bd/manifest/video.m3u8'
     }
+  },
+  streamDuration: 300000,      // 5 minutes
+  startupDelay: 15000,         // wait for CF stream to spin up
+  statusCheckInterval: 10000,  // 10 s
+  sensorUpdateInterval: 10000  // 10 s
+};
+
+// State per camera
+const cameraStates = {
+  cam1: { isStreaming: false, streamStartTime: null, statusCheckTimer: null, autoStopTimer: null, hlsInstance: null },
+  cam2: { isStreaming: false, streamStartTime: null, statusCheckTimer: null, autoStopTimer: null, hlsInstance: null }
 };
 
 // ========================================
-// API Functions
+// API helpers (camera)
 // ========================================
-
 async function startStream(cameraId) {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/stream/start/${cameraId}?api_key=${CONFIG.apiKey}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        console.log(`${cameraId} stream start response:`, data);
-        
-        if (data.status === 'started' || data.status === 'starting' || data.status === 'already_running') {
-            return true;
-        } else {
-            console.error(`Failed to start ${cameraId}:`, data);
-            return false;
-        }
-    } catch (error) {
-        console.error(`Error starting ${cameraId}:`, error);
-        return false;
-    }
+  try {
+    const resp = await fetch(`${CONFIG.streamApiUrl}/stream/start/${cameraId}?api_key=${CONFIG.apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await resp.json();
+    console.log(`${cameraId} stream start response:`, data);
+    return ['started', 'starting', 'already_running'].includes(data.status);
+  } catch (e) {
+    console.error(`Error starting ${cameraId}:`, e);
+    return false;
+  }
 }
 
 async function checkStreamStatus(cameraId) {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/stream/status/${cameraId}?api_key=${CONFIG.apiKey}`);
-        const data = await response.json();
-        return data.stream_active;
-    } catch (error) {
-        console.error(`Error checking ${cameraId} status:`, error);
-        return false;
-    }
+  try {
+    const resp = await fetch(`${CONFIG.streamApiUrl}/stream/status/${cameraId}?api_key=${CONFIG.apiKey}`);
+    const data = await resp.json();
+    return !!data.stream_active;
+  } catch (e) {
+    console.error(`Error checking ${cameraId} status:`, e);
+    return false;
+  }
 }
 
 // ========================================
-// UI Functions
+// UI helpers (camera)
 // ========================================
-
 function updatePlayButton(cameraId, state) {
-    const playButton = document.getElementById(`play-button-${cameraId}`);
-    const statusText = document.getElementById(`stream-status-${cameraId}`);
-    const cameraName = CONFIG.cameras[cameraId].name;
-    
-    switch(state) {
-        case 'ready':
-            playButton.disabled = false;
-            playButton.textContent = `▶️ Play ${cameraName}`;
-            playButton.classList.remove('loading', 'streaming');
-            if (statusText) statusText.textContent = 'Ready to stream';
-            break;
-            
-        case 'loading':
-            playButton.disabled = true;
-            playButton.textContent = '⏳ Starting...';
-            playButton.classList.add('loading');
-            if (statusText) statusText.textContent = 'Initializing stream...';
-            break;
-            
-        case 'streaming':
-            playButton.disabled = true;
-            playButton.textContent = '🔴 Live';
-            playButton.classList.add('streaming');
-            playButton.classList.remove('loading');
-            if (statusText) {
-                const timeRemaining = Math.floor((CONFIG.streamDuration - (Date.now() - cameraStates[cameraId].streamStartTime)) / 1000);
-                statusText.textContent = `Streaming (${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')} remaining)`;
-            }
-            break;
-            
-        case 'ended':
-            playButton.disabled = false;
-            playButton.textContent = `▶️ Restart ${cameraName}`;
-            playButton.classList.remove('loading', 'streaming');
-            if (statusText) statusText.textContent = 'Stream ended. Click to restart.';
-            break;
-            
-        case 'error':
-            playButton.disabled = false;
-            playButton.textContent = '⚠️ Try Again';
-            playButton.classList.remove('loading', 'streaming');
-            if (statusText) statusText.textContent = 'Error. Try again.';
-            break;
-    }
+  const playButton = document.getElementById(`play-button-${cameraId}`);
+  const statusText = document.getElementById(`stream-status-${cameraId}`);
+  const name = CONFIG.cameras[cameraId].name;
+
+  if (!playButton) return;
+
+  switch (state) {
+    case 'ready':
+      playButton.disabled = false;
+      playButton.textContent = `▶️ Play ${name}`;
+      playButton.classList.remove('loading', 'streaming');
+      if (statusText) statusText.textContent = 'Ready to stream';
+      break;
+    case 'loading':
+      playButton.disabled = true;
+      playButton.textContent = `⏳ Starting ${name}…`;
+      playButton.classList.add('loading');
+      if (statusText) statusText.textContent = 'Starting…';
+      break;
+    case 'streaming':
+      playButton.disabled = false;
+      playButton.textContent = `⏹ Stop ${name}`;
+      playButton.classList.remove('loading');
+      playButton.classList.add('streaming');
+      if (statusText) statusText.textContent = 'Streaming';
+      break;
+    case 'error':
+      playButton.disabled = false;
+      playButton.textContent = `▶️ Retry ${name}`;
+      playButton.classList.remove('loading', 'streaming');
+      if (statusText) statusText.textContent = 'Error';
+      break;
+  }
 }
 
-function updateRemainingTime(cameraId) {
-    const state = cameraStates[cameraId];
-    if (!state.isStreaming || !state.streamStartTime) return;
-    
-    const elapsed = Date.now() - state.streamStartTime;
-    const remaining = CONFIG.streamDuration - elapsed;
-    
-    if (remaining <= 0) {
-        handleStreamEnded(cameraId);
-        return;
-    }
-    
-    const statusText = document.getElementById(`stream-status-${cameraId}`);
-    if (statusText) {
-        const minutes = Math.floor(remaining / 60000);
-        const seconds = Math.floor((remaining % 60000) / 1000);
-        statusText.textContent = `🔴 Live (${minutes}:${seconds.toString().padStart(2, '0')} remaining)`;
-    }
-}
+// HLS player control
+async function startHLSPlayer(cameraId) {
+  const state = cameraStates[cameraId];
+  const video = document.getElementById(`video-player-${cameraId}`);
+  const playbackUrl = CONFIG.cameras[cameraId].playbackUrl;
 
-// ========================================
-// Stream Management
-// ========================================
+  if (!video) return false;
 
-function startStatusChecking(cameraId) {
-    const state = cameraStates[cameraId];
-    
-    // Wait 20 seconds before starting status checks
-    setTimeout(() => {
-        state.statusCheckTimer = setInterval(async () => {
-            const isActive = await checkStreamStatus(cameraId);
-            if (!isActive && state.isStreaming) {
-                console.log(`${cameraId} stopped unexpectedly`);
-                handleStreamEnded(cameraId);
-            }
-        }, CONFIG.statusCheckInterval);
-    }, 20000);
-    
-    // Update remaining time display every second
-    const timeUpdateTimer = setInterval(() => {
-        if (state.isStreaming) {
-            updateRemainingTime(cameraId);
-        } else {
-            clearInterval(timeUpdateTimer);
-        }
-    }, 1000);
-}
-
-function stopStatusChecking(cameraId) {
-    const state = cameraStates[cameraId];
-    if (state.statusCheckTimer) {
-        clearInterval(state.statusCheckTimer);
-        state.statusCheckTimer = null;
-    }
-    if (state.autoStopTimer) {
-        clearTimeout(state.autoStopTimer);
-        state.autoStopTimer = null;
-    }
-}
-
-function handleStreamEnded(cameraId) {
-    console.log(`${cameraId} stream ended`);
-    
-    // Stop the HLS player
-    stopHLSPlayer(cameraId);
-    
-    // Update state
-    const state = cameraStates[cameraId];
-    state.isStreaming = false;
-    state.streamStartTime = null;
-    stopStatusChecking(cameraId);
-    
-    // Update UI
-    updatePlayButton(cameraId, 'ended');
-}
-
-async function handlePlayButtonClick(cameraId) {
-    console.log(`${cameraId} play button clicked`);
-    
-    // Update UI to loading state
-    updatePlayButton(cameraId, 'loading');
-    
-    try {
-        // Start the stream on RPi5
-        const streamStarted = await startStream(cameraId);
-        
-        if (!streamStarted) {
-            updatePlayButton(cameraId, 'error');
-            alert(`Failed to start ${CONFIG.cameras[cameraId].name}. Please try again.`);
-            return;
-        }
-        
-        // Wait for stream to initialize
-        console.log(`Waiting ${CONFIG.startupDelay}ms for ${cameraId} to start...`);
-        await new Promise(resolve => setTimeout(resolve, CONFIG.startupDelay));
-        
-        // Update state
-        const state = cameraStates[cameraId];
-        state.isStreaming = true;
-        state.streamStartTime = Date.now();
-        
-        // Initialize HLS player
-        const playbackUrl = CONFIG.cameras[cameraId].playbackUrl;
-        console.log(`Initializing ${cameraId} HLS player with URL:`, playbackUrl);
-        const playerStarted = initializeHLSPlayer(cameraId, playbackUrl);
-        
-        if (!playerStarted) {
-            console.error(`Failed to initialize ${cameraId} video player`);
-            updatePlayButton(cameraId, 'error');
-            alert(`Failed to initialize ${CONFIG.cameras[cameraId].name} player. Please try again.`);
-            state.isStreaming = false;
-            state.streamStartTime = null;
-            return;
-        }
-        
-        // Update UI
-        updatePlayButton(cameraId, 'streaming');
-        
-        // Start monitoring stream status
-        startStatusChecking(cameraId);
-        
-        // Set timer to handle automatic stop after 5 minutes
-        state.autoStopTimer = setTimeout(() => {
-            handleStreamEnded(cameraId);
-        }, CONFIG.streamDuration);
-        
-    } catch (error) {
-        console.error(`Error in ${cameraId} play button handler:`, error);
-        updatePlayButton(cameraId, 'error');
-        alert(`An error occurred with ${CONFIG.cameras[cameraId].name}. Please try again.`);
-    }
-}
-
-// ========================================
-// HLS Player Setup
-// ========================================
-
-function initializeHLSPlayer(cameraId, url) {
-    const videoPlayer = document.getElementById(`video-player-${cameraId}`);
-    if (!videoPlayer) {
-        console.error(`Video player element not found for ${cameraId}`);
-        return false;
-    }
-
-    const state = cameraStates[cameraId];
-
-    // Destroy existing HLS instance if any
+  if (Hls.isSupported()) {
+    // Cleanup if any
     if (state.hlsInstance) {
-        state.hlsInstance.destroy();
-        state.hlsInstance = null;
+      state.hlsInstance.destroy();
+      state.hlsInstance = null;
     }
 
-    // Check if browser supports native HLS (Safari/iOS)
-    if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-        console.log(`Using native HLS support for ${cameraId}`);
-        videoPlayer.src = url;
-        videoPlayer.play().catch(err => {
-            console.error(`Error playing ${cameraId}:`, err);
-            updatePlayButton(cameraId, 'error');
-            alert(`Failed to play ${CONFIG.cameras[cameraId].name}. Please try again.`);
-        });
-        return true;
-    }
-    // Use HLS.js for other browsers
-    else if (window.Hls && Hls.isSupported()) {
-        console.log(`Using HLS.js for ${cameraId}`);
-        state.hlsInstance = new Hls({
-            enableWorker: true,
-            lowLatencyMode: false,
-            
-            liveSyncDurationCount: 7,
-            liveMaxLatencyDurationCount: 15,
-            liveDurationInfinity: true,
-            
-            maxBufferLength: 60,
-            maxMaxBufferLength: 120,
-            backBufferLength: 90,
-            
-            maxBufferSize: 60 * 1000 * 1000,
-            maxBufferHole: 1.0,
-            
-            manifestLoadingTimeOut: 10000,
-            manifestLoadingMaxRetry: 10,
-            manifestLoadingRetryDelay: 1000,
-            
-            levelLoadingTimeOut: 10000,
-            levelLoadingMaxRetry: 10,
-            levelLoadingRetryDelay: 1000,
-            
-            fragLoadingTimeOut: 20000,
-            fragLoadingMaxRetry: 10,
-            fragLoadingRetryDelay: 1000,
-            
-            startPosition: -1
-        });
+    const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+    state.hlsInstance = hls;
 
-        state.hlsInstance.loadSource(url);
-        state.hlsInstance.attachMedia(videoPlayer);
+    hls.loadSource(playbackUrl);
+    hls.attachMedia(video);
 
-        state.hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-            console.log(`${cameraId} HLS manifest parsed, starting playback`);
-            
-            videoPlayer.play().catch(err => {
-                console.error(`Error playing ${cameraId}:`, err);
+    return new Promise(resolve => {
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().then(() => resolve(true)).catch(err => {
+          console.error('Autoplay failed:', err);
+          resolve(false);
+        });
+      });
+
+      hls.on(Hls.Events.ERROR, (evt, data) => {
+        console.error(`${cameraId} HLS error`, data);
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error(`${cameraId} fatal error, cannot recover`);
+              if (state.isStreaming) {
                 updatePlayButton(cameraId, 'error');
-                alert(`Failed to play ${CONFIG.cameras[cameraId].name}. Please try again.`);
-            });
-        });
-
-        state.hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-            console.error(`${cameraId} HLS error:`, data);
-            if (data.fatal) {
-                switch (data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        console.log(`${cameraId} network error, attempting recovery...`);
-                        state.hlsInstance.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.log(`${cameraId} media error, attempting recovery...`);
-                        state.hlsInstance.recoverMediaError();
-                        break;
-                    default:
-                        console.error(`${cameraId} fatal error, cannot recover`);
-                        if (state.isStreaming) {
-                            updatePlayButton(cameraId, 'error');
-                            alert(`${CONFIG.cameras[cameraId].name} playback error. Please try restarting.`);
-                        }
-                        break;
-                }
-            }
-        });
-
-        return true;
-    } else {
-        console.error(`HLS not supported in this browser for ${cameraId}`);
-        alert('Your browser does not support HLS video playback.');
-        return false;
-    }
+                alert(`${CONFIG.cameras[cameraId].name} playback error. Please try restarting.`);
+              }
+              break;
+          }
+        }
+      });
+    });
+  } else {
+    alert('Your browser does not support HLS video playback.');
+    return false;
+  }
 }
 
 function stopHLSPlayer(cameraId) {
-    const videoPlayer = document.getElementById(`video-player-${cameraId}`);
-    const state = cameraStates[cameraId];
-    
-    if (state.hlsInstance) {
-        state.hlsInstance.destroy();
-        state.hlsInstance = null;
-    }
-    
-    if (videoPlayer) {
-        videoPlayer.pause();
-        videoPlayer.src = '';
-        videoPlayer.load();
-    }
+  const video = document.getElementById(`video-player-${cameraId}`);
+  const state = cameraStates[cameraId];
+
+  if (state.hlsInstance) {
+    state.hlsInstance.destroy();
+    state.hlsInstance = null;
+  }
+  if (video) {
+    video.pause();
+    video.src = '';
+    video.load();
+  }
 }
 
-// ========================================
-// Video Player Event Handlers
-// ========================================
+async function handlePlayButtonClick(cameraId) {
+  const state = cameraStates[cameraId];
 
+  // If already streaming => stop
+  if (state.isStreaming) {
+    handleStreamEnded(cameraId);
+    return;
+  }
+
+  updatePlayButton(cameraId, 'loading');
+
+  // Ask backend to start pushing the stream
+  const ok = await startStream(cameraId);
+  if (!ok) {
+    updatePlayButton(cameraId, 'error');
+    alert(`Failed to start ${CONFIG.cameras[cameraId].name}.`);
+    return;
+  }
+
+  // Wait a bit for ingest/startup then attach HLS
+  setTimeout(async () => {
+    const attached = await startHLSPlayer(cameraId);
+    if (!attached) {
+      updatePlayButton(cameraId, 'error');
+      return;
+    }
+
+    state.isStreaming = true;
+    state.streamStartTime = Date.now();
+    updatePlayButton(cameraId, 'streaming');
+
+    // Auto stop after streamDuration
+    state.autoStopTimer = setTimeout(() => handleStreamEnded(cameraId), CONFIG.streamDuration);
+
+    // Periodic status check (optional)
+    state.statusCheckTimer = setInterval(async () => {
+      const active = await checkStreamStatus(cameraId);
+      if (!active) handleStreamEnded(cameraId);
+    }, CONFIG.statusCheckInterval);
+  }, CONFIG.startupDelay);
+}
+
+function handleStreamEnded(cameraId) {
+  const state = cameraStates[cameraId];
+
+  stopHLSPlayer(cameraId);
+
+  if (state.autoStopTimer) clearTimeout(state.autoStopTimer);
+  if (state.statusCheckTimer) clearInterval(state.statusCheckTimer);
+
+  state.isStreaming = false;
+  state.streamStartTime = null;
+  state.autoStopTimer = null;
+  state.statusCheckTimer = null;
+
+  updatePlayButton(cameraId, 'ready');
+}
+
+// Video element listeners
 function setupVideoPlayerEvents(cameraId) {
-    const videoPlayer = document.getElementById(`video-player-${cameraId}`);
-    if (!videoPlayer) return;
-    
-    const state = cameraStates[cameraId];
-    
-    videoPlayer.addEventListener('error', (e) => {
-        console.error(`${cameraId} video player error:`, e);
-        if (state.isStreaming) {
-            // Check if stream ended naturally
-            const elapsed = Date.now() - state.streamStartTime;
-            
-            if (elapsed >= CONFIG.streamDuration - 5000) {
-                // Stream ended naturally
-                console.log(`${cameraId} stream ended as expected`);
-                handleStreamEnded(cameraId);
-            } else {
-                // Unexpected error
-                updatePlayButton(cameraId, 'error');
-                alert(`${CONFIG.cameras[cameraId].name} playback error. The stream may have ended unexpectedly.`);
-                handleStreamEnded(cameraId);
-            }
-        }
-    });
-    
-    videoPlayer.addEventListener('ended', () => {
-        console.log(`${cameraId} video ended event`);
-        if (state.isStreaming) {
-            handleStreamEnded(cameraId);
-        }
-    });
-    
-    videoPlayer.addEventListener('waiting', () => {
-        console.log(`${cameraId} video waiting/buffering...`);
-    });
-}
+  const video = document.getElementById(`video-player-${cameraId}`);
+  if (!video) return;
+  const state = cameraStates[cameraId];
 
-// ========================================
-// Initialization
-// ========================================
-
-function initializeCamera(cameraId) {
-    console.log(`Initializing ${cameraId} controls`);
-    
-    const playButton = document.getElementById(`play-button-${cameraId}`);
-    if (playButton) {
-        playButton.addEventListener('click', () => handlePlayButtonClick(cameraId));
-        updatePlayButton(cameraId, 'ready');
-    } else {
-        console.error(`Play button not found for ${cameraId}`);
+  video.addEventListener('error', (e) => {
+    console.error(`${cameraId} video error`, e);
+    if (state.isStreaming) {
+      const elapsed = Date.now() - state.streamStartTime;
+      if (elapsed >= CONFIG.streamDuration - 5000) {
+        handleStreamEnded(cameraId);
+      } else {
+        updatePlayButton(cameraId, 'error');
+        alert(`${CONFIG.cameras[cameraId].name} playback error. The stream may have ended unexpectedly.`);
+        handleStreamEnded(cameraId);
+      }
     }
-    
-    setupVideoPlayerEvents(cameraId);
-    
-    // Check initial stream status
-    checkStreamStatus(cameraId).then(isActive => {
-        if (isActive) {
-            console.log(`${cameraId} stream is already active`);
-        }
-    });
-}
+  });
 
-function initializeStreamControls() {
-    console.log('Initializing dual camera stream controls and sensors');
-    
-    // Initialize cameras
-    initializeCamera('cam1');
-    initializeCamera('cam2');
-    
-    // Initialize chart
-    initializeChart();
-    setupChartControls();
-    
-    // Initialize sensor updates
-    startSensorUpdates();
-}
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeStreamControls);
-} else {
-    initializeStreamControls();
+  video.addEventListener('ended', () => {
+    if (state.isStreaming) handleStreamEnded(cameraId);
+  });
 }
 
 // ========================================
-// Optional: Manual Controls (for testing)
+// Sensor Data (cards + chart)
 // ========================================
-
-window.streamControls = {
-    startCam1: () => handlePlayButtonClick('cam1'),
-    startCam2: () => handlePlayButtonClick('cam2'),
-    stopCam1: () => handleStreamEnded('cam1'),
-    stopCam2: () => handleStreamEnded('cam2'),
-    checkStatus: (cameraId) => checkStreamStatus(cameraId),
-    getState: (cameraId) => cameraStates[cameraId]
-};
-
-// ========================================
-// Sensor Data Functions
-// ========================================
-
 let sensorUpdateTimer = null;
 let chart = null;
-let currentTimeRange = 60; // Default: last 60 data points
+let currentTimeRange = 60; // default: last 60 samples
 
 async function fetchSensorData() {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/sensor/data`);
-        const result = await response.json();
-        
-        if (result.status === 'ok' && result.data) {
-            updateSensorDisplay(result.data);
-            return true;
-        } else {
-            console.error('Sensor data error:', result);
-            showSensorError('No data available');
-            return false;
-        }
-    } catch (error) {
-        console.error('Error fetching sensor data:', error);
-        showSensorError('Connection error');
-        return false;
+  try {
+    const response = await fetch(`${CONFIG.streamApiUrl}/sensor/data`);
+    const result = await response.json();
+    if (result.status === 'ok' && result.data) {
+      updateSensorDisplay(result.data);
+      return true;
+    } else {
+      console.error('Sensor data error:', result);
+      showSensorError('No data available');
+      return false;
     }
+  } catch (e) {
+    console.error('Error fetching sensor data:', e);
+    showSensorError('Connection error');
+    return false;
+  }
 }
 
 async function fetchSensorHistory(limit = null) {
-    try {
-        let url = `${CONFIG.streamApiUrl}/sensor/history`;
-        if (limit) {
-            url += `?limit=${limit}`;
-        }
-        
-        const response = await fetch(url);
-        const result = await response.json();
-        
-        if (result.status === 'ok' && result.data) {
-            return result.data;
-        } else {
-            console.error('Sensor history error:', result);
-            return [];
-        }
-    } catch (error) {
-        console.error('Error fetching sensor history:', error);
-        return [];
-    }
+  try {
+    let url = `${CONFIG.streamApiUrl}/sensor/history`;
+    if (limit) url += `?limit=${limit}`;
+    const response = await fetch(url);
+    const result = await response.json();
+    if (result.status === 'ok' && result.data) return result.data;
+    console.error('Sensor history error:', result);
+    return [];
+  } catch (e) {
+    console.error('Error fetching sensor history:', e);
+    return [];
+  }
 }
 
 function updateSensorDisplay(data) {
-    const tempElement = document.getElementById('temperature-value');
-    const humElement = document.getElementById('humidity-value');
-    const statusElement = document.getElementById('sensor-status');
-    
-    if (data.temperature !== null && data.humidity !== null) {
-        // Update values with animation
-        if (tempElement) {
-            tempElement.textContent = data.temperature.toFixed(1);
-            tempElement.classList.add('updated');
-            setTimeout(() => tempElement.classList.remove('updated'), 500);
-        }
-        
-        if (humElement) {
-            humElement.textContent = data.humidity.toFixed(1);
-            humElement.classList.add('updated');
-            setTimeout(() => humElement.classList.remove('updated'), 500);
-        }
-        
-        // Update status
-        if (statusElement) {
-            const updateTime = new Date(data.last_update);
-            const timeStr = updateTime.toLocaleTimeString();
-            statusElement.textContent = `Last updated: ${timeStr} (${data.sample_count} samples)`;
-            statusElement.className = 'sensor-status success';
-        }
-    } else {
-        // Waiting for first reading
-        if (statusElement) {
-            statusElement.textContent = 'Waiting for sensor data...';
-            statusElement.className = 'sensor-status';
-        }
+  const tEl = document.getElementById('temperature-value');
+  const hEl = document.getElementById('humidity-value');
+  const sEl = document.getElementById('sensor-status');
+
+  if (data.temperature != null && data.humidity != null) {
+    if (tEl) {
+      tEl.textContent = Number(data.temperature).toFixed(1);
+      tEl.classList.add('updated'); setTimeout(() => tEl.classList.remove('updated'), 500);
     }
+    if (hEl) {
+      hEl.textContent = Number(data.humidity).toFixed(1);
+      hEl.classList.add('updated'); setTimeout(() => hEl.classList.remove('updated'), 500);
+    }
+    if (sEl) {
+      const ts = new Date(data.last_update);
+      sEl.textContent = `Last updated: ${ts.toLocaleTimeString()} (${data.sample_count} samples)`;
+      sEl.className = 'sensor-status success';
+    }
+  } else {
+    if (sEl) {
+      sEl.textContent = 'Waiting for sensor data.';
+      sEl.className = 'sensor-status';
+    }
+  }
 }
 
-function showSensorError(message) {
-    const statusElement = document.getElementById('sensor-status');
-    if (statusElement) {
-        statusElement.textContent = `Error: ${message}`;
-        statusElement.className = 'sensor-status error';
-    }
+function showSensorError(msg) {
+  const sEl = document.getElementById('sensor-status');
+  if (sEl) {
+    sEl.textContent = `Error: ${msg}`;
+    sEl.className = 'sensor-status error';
+  }
 }
 
 function startSensorUpdates() {
-    console.log('Starting sensor data updates');
-    
-    // Fetch immediately
+  console.log('Starting sensor data updates');
+  fetchSensorData();
+  updateChart();
+  sensorUpdateTimer = setInterval(() => {
     fetchSensorData();
     updateChart();
-    
-    // Then fetch every 10 seconds
-    sensorUpdateTimer = setInterval(() => {
-        fetchSensorData();
-        updateChart();
-    }, CONFIG.sensorUpdateInterval);
+  }, CONFIG.sensorUpdateInterval);
 }
 
 function stopSensorUpdates() {
-    if (sensorUpdateTimer) {
-        clearInterval(sensorUpdateTimer);
-        sensorUpdateTimer = null;
-    }
+  if (sensorUpdateTimer) {
+    clearInterval(sensorUpdateTimer);
+    sensorUpdateTimer = null;
+  }
 }
 
-// ========================================
-// Chart Functions
-// ========================================
-
+// Chart setup
 function initializeChart() {
-    const canvas = document.getElementById('sensor-chart');
-    if (!canvas) {
-        console.error('Chart canvas not found');
-        return;
-    }
-    
-    const ctx = canvas.getContext('2d');
-    
-    chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [
-                {
-                    label: 'Temperature (°C)',
-                    data: [],
-                    borderColor: 'rgb(245, 87, 108)',
-                    backgroundColor: 'rgba(245, 87, 108, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    yAxisID: 'y-temp'
-                },
-                {
-                    label: 'Humidity (%)',
-                    data: [],
-                    borderColor: 'rgb(0, 242, 254)',
-                    backgroundColor: 'rgba(0, 242, 254, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    yAxisID: 'y-hum'
-                }
-            ]
+  const canvas = document.getElementById('sensor-chart');
+  if (!canvas) { console.error('Chart canvas not found'); return; }
+  const ctx = canvas.getContext('2d');
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'Temperature (°C)',
+          data: [],
+          yAxisID: 'y-temp',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.2
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            label += context.parsed.y.toFixed(1);
-                            return label;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    display: true,
-                    title: {
-                        display: true,
-                        text: 'Time'
-                    },
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45
-                    }
-                },
-                'y-temp': {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    title: {
-                        display: true,
-                        text: 'Temperature (°C)',
-                        color: 'rgb(245, 87, 108)'
-                    },
-                    grid: {
-                        drawOnChartArea: true,
-                    },
-                },
-                'y-hum': {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    title: {
-                        display: true,
-                        text: 'Humidity (%)',
-                        color: 'rgb(0, 242, 254)'
-                    },
-                    grid: {
-                        drawOnChartArea: false,
-                    },
-                    min: 0,
-                    max: 100
-                }
-            }
+        {
+          label: 'Humidity (%)',
+          data: [],
+          yAxisID: 'y-hum',
+          borderWidth: 2,
+          pointRadius: 2,
+          borderDash: [4, 3],
+          tension: 0.2
         }
-    });
-    
-    console.log('Chart initialized');
+      ]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top' },
+        tooltip: { enabled: true }
+      },
+      scales: {
+        x: { ticks: { autoSkip: true, maxTicksLimit: 8 } },
+        'y-temp': {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          title: { display: true, text: 'Temperature (°C)' },
+          grid: { drawOnChartArea: true },
+          suggestedMin: 10,   // adjust for your environment
+          suggestedMax: 40
+        },
+        'y-hum': {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          title: { display: true, text: 'Humidity (%)' },
+          grid: { drawOnChartArea: false },
+          min: 0,
+          max: 100
+        }
+      }
+    }
+  });
+
+  console.log('Chart initialized');
 }
 
+// Robust history → chart mapping
 async function updateChart() {
-    if (!chart) {
-        console.error('Chart not initialized');
-        return;
-    }
-    
-    const limit = currentTimeRange === 'all' ? null : currentTimeRange;
-    const history = await fetchSensorHistory(limit);
-    
-    if (history.length === 0) {
-        console.log('No history data yet');
-        return;
-    }
-    
-    // Prepare data
-    const labels = history.map(d => {
-        const date = new Date(d.timestamp);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    });
-    
-    const temperatures = history.map(d => d.temperature);
-    const humidities = history.map(d => d.humidity);
-    
-    // Update chart
-    chart.data.labels = labels;
-    chart.data.datasets[0].data = temperatures;
-    chart.data.datasets[1].data = humidities;
-    chart.update('none'); // 'none' = no animation for smooth updates
-    
-    console.log(`Chart updated with ${history.length} data points`);
+  if (!chart) { console.error('Chart not initialized'); return; }
+
+  const limit = currentTimeRange === 'all' ? null : currentTimeRange;
+  let history = await fetchSensorHistory(limit);
+
+  if (!Array.isArray(history) || history.length === 0) {
+    console.log('No history data yet');
+    return;
+  }
+
+  // Normalize keys and coerce to numbers
+  history = history.map(d => {
+    const t = Number.parseFloat(d.temperature ?? d.temp ?? d.t);
+    const h = Number.parseFloat(d.humidity   ?? d.hum  ?? d.h);
+    const ts = d.timestamp ?? d.time ?? Date.now();
+    return {
+      timestamp: ts,
+      temperature: Number.isFinite(t) ? t : NaN,
+      humidity: Number.isFinite(h) ? h : NaN
+    };
+  });
+
+  // Filter obviously wrong points / NaN
+  history = history.filter(d =>
+    Number.isFinite(d.temperature) && Number.isFinite(d.humidity) &&
+    d.temperature > -40 && d.temperature < 80 &&
+    d.humidity >= 0 && d.humidity <= 100
+  );
+
+  if (history.length === 0) return;
+
+  const labels = history.map(d => {
+    const date = new Date(d.timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  });
+
+  const temperatures = history.map(d => d.temperature);
+  const humidities   = history.map(d => d.humidity);
+
+  chart.data.labels = labels;
+  chart.data.datasets[0].data = temperatures; // temperature (°C)
+  chart.data.datasets[1].data = humidities;   // humidity (%)
+  chart.update('none'); // fast update without animation
+
+  console.log(`Chart updated with ${history.length} points`);
 }
 
 function setupChartControls() {
-    const buttons = document.querySelectorAll('.time-range-btn');
-    
-    buttons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Remove active class from all buttons
-            buttons.forEach(btn => btn.classList.remove('active'));
-            
-            // Add active class to clicked button
-            button.classList.add('active');
-            
-            // Update time range
-            const range = button.getAttribute('data-range');
-            currentTimeRange = range === 'all' ? 'all' : parseInt(range);
-            
-            // Update chart
-            updateChart();
-        });
+  const buttons = document.querySelectorAll('.time-range-btn');
+  buttons.forEach(button => {
+    button.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      button.classList.add('active');
+      const range = button.getAttribute('data-range');
+      currentTimeRange = range === 'all' ? 'all' : parseInt(range, 10);
+      updateChart();
     });
+  });
 }
 
-// Add to initialization
-/*function initializeStreamControls() {
-    console.log('Initializing dual camera stream controls and sensors');
-    
-    // Initialize cameras
-    initializeCamera('cam1');
-    initializeCamera('cam2');
-    
-    // Initialize sensor updates
-    startSensorUpdates();
-}
+// ========================================
+// Initialization (single source of truth)
+// ========================================
+function initializeCamera(cameraId) {
+  const playButton = document.getElementById(`play-button-${cameraId}`);
+  if (playButton) {
+    playButton.addEventListener('click', () => handlePlayButtonClick(cameraId));
+    updatePlayButton(cameraId, 'ready');
+  } else {
+    console.error(`Play button not found for ${cameraId}`);
+  }
 
-// Expose sensor controls for testing
-window.sensorControls = {
-    fetch: fetchSensorData,
-    fetchHistory: fetchSensorHistory,
-    start: startSensorUpdates,
-    stop: stopSensorUpdates,
-    updateChart: updateChart
-};*/
+  setupVideoPlayerEvents(cameraId);
+
+  // Optional: check initial status
+  checkStreamStatus(cameraId).then(isActive => {
+    if (isActive) console.log(`${cameraId} stream is already active`);
+  });
+}
 
 function initializeStreamControls() {
   console.log('Initializing dual camera stream controls and sensors');
 
-  // Initialize cameras
+  // Cameras
   initializeCamera('cam1');
   initializeCamera('cam2');
 
-  // Initialize chart + controls
+  // Chart + controls
   initializeChart();
   setupChartControls();
 
-  // Start sensor updates (also triggers updateChart periodically)
+  // Sensor polling
   startSensorUpdates();
 }
+
+// Init when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeStreamControls);
+} else {
+  initializeStreamControls();
+}
+
+// Optional debug hooks
+window.streamControls = {
+  startCam1: () => handlePlayButtonClick('cam1'),
+  startCam2: () => handlePlayButtonClick('cam2'),
+  stopCam1: () => handleStreamEnded('cam1'),
+  stopCam2: () => handleStreamEnded('cam2'),
+  checkStatus: (id) => checkStreamStatus(id),
+  getState: (id) => cameraStates[id]
+};
+window.sensorControls = {
+  fetch: fetchSensorData,
+  fetchHistory: fetchSensorHistory,
+  start: startSensorUpdates,
+  stop: stopSensorUpdates,
+  updateChart: updateChart
+};
