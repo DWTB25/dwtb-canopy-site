@@ -1,594 +1,298 @@
-// ========================================
-// Dual Camera On-Demand Stream Integration
-// ========================================
-//GABY1
-
-// Configuration
-const CONFIG = {
-    streamApiUrl: 'https://stream-api.dwtb-solar-canopy.org',
-    apiKey: 'bb6104ec02362103cf42e69567d1f724f577b46f3789ec162893cdb906c587c2',
-    cameras: {
-        cam1: {
-            id: 'cam1',
-            name: 'Camera 1',
-            playbackUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/c0c327782cd0701b6d78dd33526706e3/manifest/video.m3u8'
-        },
-        cam2: {
-            id: 'cam2',
-            name: 'Camera 2',
-            playbackUrl: 'https://customer-i32my3qs0ldoeuy3.cloudflarestream.com/4aabdd6cb03fb70149fb583b3ffa66bd/manifest/video.m3u8'
-        }
-    },
-    streamDuration: 300000, // 5 minutes in milliseconds
-    startupDelay: 15000, // Wait 15 seconds for stream to initialize
-    statusCheckInterval: 10000, // Check status every 10 seconds
-    sensorUpdateInterval: 10000 // Update sensor data every 10 seconds
-};
-
-// State management for each camera
-const cameraStates = {
-    cam1: {
-        isStreaming: false,
-        streamStartTime: null,
-        statusCheckTimer: null,
-        autoStopTimer: null,
-        hlsInstance: null
-    },
-    cam2: {
-        isStreaming: false,
-        streamStartTime: null,
-        statusCheckTimer: null,
-        autoStopTimer: null,
-        hlsInstance: null
+//GABY0
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DWTB Solar Canopy - Live Cameras</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      background:#f5f7fa; 
+      color:#222; 
+      padding:20px; 
+      margin:0; 
     }
-};
-
-// ========================================
-// API Functions
-// ========================================
-
-async function startStream(cameraId) {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/stream/start/${cameraId}?api_key=${CONFIG.apiKey}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        console.log(`${cameraId} stream start response:`, data);
-        
-        if (data.status === 'started' || data.status === 'starting' || data.status === 'already_running') {
-            return true;
-        } else {
-            console.error(`Failed to start ${cameraId}:`, data);
-            return false;
-        }
-    } catch (error) {
-        console.error(`Error starting ${cameraId}:`, error);
-        return false;
+    h1 { 
+      font-size:2.5em; 
+      margin-bottom:.5em; 
     }
-}
-
-async function checkStreamStatus(cameraId) {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/stream/status/${cameraId}?api_key=${CONFIG.apiKey}`);
-        const data = await response.json();
-        return data.stream_active;
-    } catch (error) {
-        console.error(`Error checking ${cameraId} status:`, error);
-        return false;
+    p { 
+      font-size:1.2em; 
+      color:#555; 
     }
-}
-
-// ========================================
-// UI Functions
-// ========================================
-
-function updatePlayButton(cameraId, state) {
-    const playButton = document.getElementById(`play-button-${cameraId}`);
-    const statusText = document.getElementById(`stream-status-${cameraId}`);
-    const cameraName = CONFIG.cameras[cameraId].name;
-    
-    switch(state) {
-        case 'ready':
-            playButton.disabled = false;
-            playButton.textContent = `▶️ Play ${cameraName}`;
-            playButton.classList.remove('loading', 'streaming');
-            if (statusText) statusText.textContent = 'Ready to stream';
-            break;
-            
-        case 'loading':
-            playButton.disabled = true;
-            playButton.textContent = '⏳ Starting...';
-            playButton.classList.add('loading');
-            if (statusText) statusText.textContent = 'Initializing stream...';
-            break;
-            
-        case 'streaming':
-            playButton.disabled = true;
-            playButton.textContent = '🔴 Live';
-            playButton.classList.add('streaming');
-            playButton.classList.remove('loading');
-            if (statusText) {
-                const timeRemaining = Math.floor((CONFIG.streamDuration - (Date.now() - cameraStates[cameraId].streamStartTime)) / 1000);
-                statusText.textContent = `Streaming (${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')} remaining)`;
-            }
-            break;
-            
-        case 'ended':
-            playButton.disabled = false;
-            playButton.textContent = `▶️ Restart ${cameraName}`;
-            playButton.classList.remove('loading', 'streaming');
-            if (statusText) statusText.textContent = 'Stream ended. Click to restart.';
-            break;
-            
-        case 'error':
-            playButton.disabled = false;
-            playButton.textContent = '⚠️ Try Again';
-            playButton.classList.remove('loading', 'streaming');
-            if (statusText) statusText.textContent = 'Error. Try again.';
-            break;
-    }
-}
-
-function updateRemainingTime(cameraId) {
-    const state = cameraStates[cameraId];
-    if (!state.isStreaming || !state.streamStartTime) return;
-    
-    const elapsed = Date.now() - state.streamStartTime;
-    const remaining = CONFIG.streamDuration - elapsed;
-    
-    if (remaining <= 0) {
-        handleStreamEnded(cameraId);
-        return;
+    .main-image { 
+      margin-top:20px; 
+      width:90%; 
+      max-width:600px; 
+      border-radius:12px; 
+      box-shadow:0 4px 10px rgba(0,0,0,.1); 
     }
     
-    const statusText = document.getElementById(`stream-status-${cameraId}`);
-    if (statusText) {
-        const minutes = Math.floor(remaining / 60000);
-        const seconds = Math.floor((remaining % 60000) / 1000);
-        statusText.textContent = `🔴 Live (${minutes}:${seconds.toString().padStart(2, '0')} remaining)`;
-    }
-}
-
-// ========================================
-// Stream Management
-// ========================================
-
-function startStatusChecking(cameraId) {
-    const state = cameraStates[cameraId];
-    
-    // Wait 20 seconds before starting status checks
-    setTimeout(() => {
-        state.statusCheckTimer = setInterval(async () => {
-            const isActive = await checkStreamStatus(cameraId);
-            if (!isActive && state.isStreaming) {
-                console.log(`${cameraId} stopped unexpectedly`);
-                handleStreamEnded(cameraId);
-            }
-        }, CONFIG.statusCheckInterval);
-    }, 20000);
-    
-    // Update remaining time display every second
-    const timeUpdateTimer = setInterval(() => {
-        if (state.isStreaming) {
-            updateRemainingTime(cameraId);
-        } else {
-            clearInterval(timeUpdateTimer);
-        }
-    }, 1000);
-}
-
-function stopStatusChecking(cameraId) {
-    const state = cameraStates[cameraId];
-    if (state.statusCheckTimer) {
-        clearInterval(state.statusCheckTimer);
-        state.statusCheckTimer = null;
-    }
-    if (state.autoStopTimer) {
-        clearTimeout(state.autoStopTimer);
-        state.autoStopTimer = null;
-    }
-}
-
-function handleStreamEnded(cameraId) {
-    console.log(`${cameraId} stream ended`);
-    
-    // Stop the HLS player
-    stopHLSPlayer(cameraId);
-    
-    // Update state
-    const state = cameraStates[cameraId];
-    state.isStreaming = false;
-    state.streamStartTime = null;
-    stopStatusChecking(cameraId);
-    
-    // Update UI
-    updatePlayButton(cameraId, 'ended');
-}
-
-async function handlePlayButtonClick(cameraId) {
-    console.log(`${cameraId} play button clicked`);
-    
-    // Update UI to loading state
-    updatePlayButton(cameraId, 'loading');
-    
-    try {
-        // Start the stream on RPi5
-        const streamStarted = await startStream(cameraId);
-        
-        if (!streamStarted) {
-            updatePlayButton(cameraId, 'error');
-            alert(`Failed to start ${CONFIG.cameras[cameraId].name}. Please try again.`);
-            return;
-        }
-        
-        // Wait for stream to initialize
-        console.log(`Waiting ${CONFIG.startupDelay}ms for ${cameraId} to start...`);
-        await new Promise(resolve => setTimeout(resolve, CONFIG.startupDelay));
-        
-        // Update state
-        const state = cameraStates[cameraId];
-        state.isStreaming = true;
-        state.streamStartTime = Date.now();
-        
-        // Initialize HLS player
-        const playbackUrl = CONFIG.cameras[cameraId].playbackUrl;
-        console.log(`Initializing ${cameraId} HLS player with URL:`, playbackUrl);
-        const playerStarted = initializeHLSPlayer(cameraId, playbackUrl);
-        
-        if (!playerStarted) {
-            console.error(`Failed to initialize ${cameraId} video player`);
-            updatePlayButton(cameraId, 'error');
-            alert(`Failed to initialize ${CONFIG.cameras[cameraId].name} player. Please try again.`);
-            state.isStreaming = false;
-            state.streamStartTime = null;
-            return;
-        }
-        
-        // Update UI
-        updatePlayButton(cameraId, 'streaming');
-        
-        // Start monitoring stream status
-        startStatusChecking(cameraId);
-        
-        // Set timer to handle automatic stop after 5 minutes
-        state.autoStopTimer = setTimeout(() => {
-            handleStreamEnded(cameraId);
-        }, CONFIG.streamDuration);
-        
-    } catch (error) {
-        console.error(`Error in ${cameraId} play button handler:`, error);
-        updatePlayButton(cameraId, 'error');
-        alert(`An error occurred with ${CONFIG.cameras[cameraId].name}. Please try again.`);
-    }
-}
-
-// ========================================
-// HLS Player Setup
-// ========================================
-
-function initializeHLSPlayer(cameraId, url) {
-    const videoPlayer = document.getElementById(`video-player-${cameraId}`);
-    if (!videoPlayer) {
-        console.error(`Video player element not found for ${cameraId}`);
-        return false;
-    }
-
-    const state = cameraStates[cameraId];
-
-    // Destroy existing HLS instance if any
-    if (state.hlsInstance) {
-        state.hlsInstance.destroy();
-        state.hlsInstance = null;
-    }
-
-    // Check if browser supports native HLS (Safari/iOS)
-    if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-        console.log(`Using native HLS support for ${cameraId}`);
-        videoPlayer.src = url;
-        videoPlayer.play().catch(err => {
-            console.error(`Error playing ${cameraId}:`, err);
-            updatePlayButton(cameraId, 'error');
-            alert(`Failed to play ${CONFIG.cameras[cameraId].name}. Please try again.`);
-        });
-        return true;
-    }
-    // Use HLS.js for other browsers
-    else if (window.Hls && Hls.isSupported()) {
-        console.log(`Using HLS.js for ${cameraId}`);
-        state.hlsInstance = new Hls({
-            enableWorker: true,
-            lowLatencyMode: false,
-            
-            liveSyncDurationCount: 7,
-            liveMaxLatencyDurationCount: 15,
-            liveDurationInfinity: true,
-            
-            maxBufferLength: 60,
-            maxMaxBufferLength: 120,
-            backBufferLength: 90,
-            
-            maxBufferSize: 60 * 1000 * 1000,
-            maxBufferHole: 1.0,
-            
-            manifestLoadingTimeOut: 10000,
-            manifestLoadingMaxRetry: 10,
-            manifestLoadingRetryDelay: 1000,
-            
-            levelLoadingTimeOut: 10000,
-            levelLoadingMaxRetry: 10,
-            levelLoadingRetryDelay: 1000,
-            
-            fragLoadingTimeOut: 20000,
-            fragLoadingMaxRetry: 10,
-            fragLoadingRetryDelay: 1000,
-            
-            startPosition: -1
-        });
-
-        state.hlsInstance.loadSource(url);
-        state.hlsInstance.attachMedia(videoPlayer);
-
-        state.hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-            console.log(`${cameraId} HLS manifest parsed, starting playback`);
-            
-            videoPlayer.play().catch(err => {
-                console.error(`Error playing ${cameraId}:`, err);
-                updatePlayButton(cameraId, 'error');
-                alert(`Failed to play ${CONFIG.cameras[cameraId].name}. Please try again.`);
-            });
-        });
-
-        state.hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-            console.error(`${cameraId} HLS error:`, data);
-            if (data.fatal) {
-                switch (data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        console.log(`${cameraId} network error, attempting recovery...`);
-                        state.hlsInstance.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.log(`${cameraId} media error, attempting recovery...`);
-                        state.hlsInstance.recoverMediaError();
-                        break;
-                    default:
-                        console.error(`${cameraId} fatal error, cannot recover`);
-                        if (state.isStreaming) {
-                            updatePlayButton(cameraId, 'error');
-                            alert(`${CONFIG.cameras[cameraId].name} playback error. Please try restarting.`);
-                        }
-                        break;
-                }
-            }
-        });
-
-        return true;
-    } else {
-        console.error(`HLS not supported in this browser for ${cameraId}`);
-        alert('Your browser does not support HLS video playback.');
-        return false;
-    }
-}
-
-function stopHLSPlayer(cameraId) {
-    const videoPlayer = document.getElementById(`video-player-${cameraId}`);
-    const state = cameraStates[cameraId];
-    
-    if (state.hlsInstance) {
-        state.hlsInstance.destroy();
-        state.hlsInstance = null;
+    /* Sensor Container */
+    .sensor-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 30px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
-    if (videoPlayer) {
-        videoPlayer.pause();
-        videoPlayer.src = '';
-        videoPlayer.load();
-    }
-}
-
-// ========================================
-// Video Player Event Handlers
-// ========================================
-
-function setupVideoPlayerEvents(cameraId) {
-    const videoPlayer = document.getElementById(`video-player-${cameraId}`);
-    if (!videoPlayer) return;
-    
-    const state = cameraStates[cameraId];
-    
-    videoPlayer.addEventListener('error', (e) => {
-        console.error(`${cameraId} video player error:`, e);
-        if (state.isStreaming) {
-            // Check if stream ended naturally
-            const elapsed = Date.now() - state.streamStartTime;
-            
-            if (elapsed >= CONFIG.streamDuration - 5000) {
-                // Stream ended naturally
-                console.log(`${cameraId} stream ended as expected`);
-                handleStreamEnded(cameraId);
-            } else {
-                // Unexpected error
-                updatePlayButton(cameraId, 'error');
-                alert(`${CONFIG.cameras[cameraId].name} playback error. The stream may have ended unexpectedly.`);
-                handleStreamEnded(cameraId);
-            }
-        }
-    });
-    
-    videoPlayer.addEventListener('ended', () => {
-        console.log(`${cameraId} video ended event`);
-        if (state.isStreaming) {
-            handleStreamEnded(cameraId);
-        }
-    });
-    
-    videoPlayer.addEventListener('waiting', () => {
-        console.log(`${cameraId} video waiting/buffering...`);
-    });
-}
-
-// ========================================
-// Initialization
-// ========================================
-
-function initializeCamera(cameraId) {
-    console.log(`Initializing ${cameraId} controls`);
-    
-    const playButton = document.getElementById(`play-button-${cameraId}`);
-    if (playButton) {
-        playButton.addEventListener('click', () => handlePlayButtonClick(cameraId));
-        updatePlayButton(cameraId, 'ready');
-    } else {
-        console.error(`Play button not found for ${cameraId}`);
+    .sensor-container h2 {
+      margin-top: 0;
+      color: #333;
     }
     
-    setupVideoPlayerEvents(cameraId);
-    
-    // Check initial stream status
-    checkStreamStatus(cameraId).then(isActive => {
-        if (isActive) {
-            console.log(`${cameraId} stream is already active`);
-        }
-    });
-}
-
-function initializeStreamControls() {
-    console.log('Initializing dual camera stream controls and sensors');
-    
-    // Initialize cameras
-    initializeCamera('cam1');
-    initializeCamera('cam2');
-    
-    // Initialize sensor updates
-    startSensorUpdates();
-}
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeStreamControls);
-} else {
-    initializeStreamControls();
-}
-
-// ========================================
-// Optional: Manual Controls (for testing)
-// ========================================
-
-window.streamControls = {
-    startCam1: () => handlePlayButtonClick('cam1'),
-    startCam2: () => handlePlayButtonClick('cam2'),
-    stopCam1: () => handleStreamEnded('cam1'),
-    stopCam2: () => handleStreamEnded('cam2'),
-    checkStatus: (cameraId) => checkStreamStatus(cameraId),
-    getState: (cameraId) => cameraStates[cameraId]
-};
-
-// ========================================
-// Sensor Data Functions
-// ========================================
-
-let sensorUpdateTimer = null;
-
-async function fetchSensorData() {
-    try {
-        const response = await fetch(`${CONFIG.streamApiUrl}/sensor/data`);
-        const result = await response.json();
-        
-        if (result.status === 'ok' && result.data) {
-            updateSensorDisplay(result.data);
-            return true;
-        } else {
-            console.error('Sensor data error:', result);
-            showSensorError('No data available');
-            return false;
-        }
-    } catch (error) {
-        console.error('Error fetching sensor data:', error);
-        showSensorError('Connection error');
-        return false;
+    /* Sensor Grid */
+    .sensor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin: 20px 0;
     }
-}
-
-function updateSensorDisplay(data) {
-    const tempElement = document.getElementById('temperature-value');
-    const humElement = document.getElementById('humidity-value');
-    const statusElement = document.getElementById('sensor-status');
     
-    if (data.temperature !== null && data.humidity !== null) {
-        // Update values with animation
-        if (tempElement) {
-            tempElement.textContent = data.temperature.toFixed(1);
-            tempElement.classList.add('updated');
-            setTimeout(() => tempElement.classList.remove('updated'), 500);
-        }
-        
-        if (humElement) {
-            humElement.textContent = data.humidity.toFixed(1);
-            humElement.classList.add('updated');
-            setTimeout(() => humElement.classList.remove('updated'), 500);
-        }
-        
-        // Update status
-        if (statusElement) {
-            const updateTime = new Date(data.last_update);
-            const timeStr = updateTime.toLocaleTimeString();
-            statusElement.textContent = `Last updated: ${timeStr} (${data.sample_count} samples)`;
-            statusElement.className = 'sensor-status success';
-        }
-    } else {
-        // Waiting for first reading
-        if (statusElement) {
-            statusElement.textContent = 'Waiting for sensor data...';
-            statusElement.className = 'sensor-status';
-        }
+    /* Sensor Cards */
+    .sensor-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 30px;
+      border-radius: 12px;
+      color: white;
+      text-align: center;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
     }
-}
-
-function showSensorError(message) {
-    const statusElement = document.getElementById('sensor-status');
-    if (statusElement) {
-        statusElement.textContent = `Error: ${message}`;
-        statusElement.className = 'sensor-status error';
+    
+    .sensor-card:hover {
+      transform: translateY(-5px);
     }
-}
-
-function startSensorUpdates() {
-    console.log('Starting sensor data updates');
     
-    // Fetch immediately
-    fetchSensorData();
-    
-    // Then fetch every 10 seconds
-    sensorUpdateTimer = setInterval(() => {
-        fetchSensorData();
-    }, CONFIG.sensorUpdateInterval);
-}
-
-function stopSensorUpdates() {
-    if (sensorUpdateTimer) {
-        clearInterval(sensorUpdateTimer);
-        sensorUpdateTimer = null;
+    .sensor-card.temperature {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     }
-}
-
-// Add to initialization
-function initializeStreamControls() {
-    console.log('Initializing dual camera stream controls and sensors');
     
-    // Initialize cameras
-    initializeCamera('cam1');
-    initializeCamera('cam2');
+    .sensor-card.humidity {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
     
-    // Initialize sensor updates
-    startSensorUpdates();
-}
+    .sensor-icon {
+      font-size: 3em;
+      margin-bottom: 10px;
+    }
+    
+    .sensor-label {
+      font-size: 1.1em;
+      font-weight: 600;
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+    
+    .sensor-value {
+      font-size: 3em;
+      font-weight: bold;
+      margin: 10px 0;
+      transition: transform 0.3s ease;
+    }
+    
+    .sensor-value.updated {
+      transform: scale(1.1);
+    }
+    
+    .sensor-unit {
+      font-size: 1.5em;
+      opacity: 0.8;
+    }
+    
+    .sensor-status {
+      text-align: center;
+      color: #666;
+      font-size: 0.9em;
+      margin-top: 15px;
+    }
+    
+    .sensor-status.error {
+      color: #f44336;
+    }
+    
+    .sensor-status.success {
+      color: #4CAF50;
+    }
+    
+    /* Camera Grid */
+    .cameras-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 30px;
+      max-width: 1400px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    
+    /* Individual Camera Card */
+    .camera-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .camera-card h2 {
+      margin-top: 0;
+      color: #333;
+      font-size: 1.5em;
+    }
+    
+    /* Video Player */
+    .video-player { 
+      width: 100%; 
+      max-width: 640px; 
+      height: auto; 
+      margin: 20px auto; 
+      display: block; 
+      border-radius: 8px; 
+      box-shadow: 0 4px 10px rgba(0,0,0,.2); 
+      background: #000;
+    }
+    
+    /* Play Button */
+    .play-button {
+      padding: 15px 40px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background: #4CAF50;
+      color: white;
+      margin: 15px auto;
+      display: block;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      width: 100%;
+      max-width: 300px;
+    }
+    
+    .play-button:hover:not(:disabled) {
+      background: #45a049;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    .play-button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .play-button.loading {
+      background: #ff9800;
+    }
+    
+    .play-button.streaming {
+      background: #f44336;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+    
+    /* Status Text */
+    .stream-status { 
+      font-size: 1em; 
+      color: #666; 
+      margin-top: 10px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    
+    .note { 
+      font-size: .95em; 
+      color: #666; 
+      margin-top: 8px; 
+    }
+    
+    @media (max-width: 768px) { 
+      h1 { font-size: 1.8em; }
+      .cameras-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      .play-button { 
+        font-size: 16px; 
+        padding: 12px 30px; 
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>DWTB Solar Canopy</h1>
+  <p>Real-time monitoring with dual camera live streams</p>
+  <img src="images/pictest00.jpg" alt="Canopy Image" class="main-image" />
 
-// Expose sensor controls for testing
-window.sensorControls = {
-    fetch: fetchSensorData,
-    start: startSensorUpdates,
-    stop: stopSensorUpdates
-};
+  <!-- Sensor Data Display -->
+  <div class="sensor-container">
+    <h2>🌡️ Environmental Sensors</h2>
+    <div class="sensor-grid">
+      <div class="sensor-card temperature">
+        <div class="sensor-icon">🌡️</div>
+        <div class="sensor-label">Temperature</div>
+        <div class="sensor-value" id="temperature-value">--</div>
+        <div class="sensor-unit">°C</div>
+      </div>
+      <div class="sensor-card humidity">
+        <div class="sensor-icon">💧</div>
+        <div class="sensor-label">Humidity</div>
+        <div class="sensor-value" id="humidity-value">--</div>
+        <div class="sensor-unit">%</div>
+      </div>
+    </div>
+    <p class="sensor-status" id="sensor-status">Connecting to sensors...</p>
+  </div>
+
+  <!-- Dual Camera Grid -->
+  <div class="cameras-container">
+    
+    <!-- Camera 1 -->
+    <div class="camera-card">
+      <h2>📹 Camera 1</h2>
+      <p class="note">Click to start 5-minute live stream</p>
+      
+      <video id="video-player-cam1" class="video-player" controls>
+        Your browser doesn't support video playback.
+      </video>
+      
+      <button id="play-button-cam1" class="play-button">
+        ▶️ Play Camera 1
+      </button>
+      
+      <p id="stream-status-cam1" class="stream-status">Ready to stream</p>
+    </div>
+
+    <!-- Camera 2 -->
+    <div class="camera-card">
+      <h2>📹 Camera 2</h2>
+      <p class="note">Click to start 5-minute live stream</p>
+      
+      <video id="video-player-cam2" class="video-player" controls>
+        Your browser doesn't support video playback.
+      </video>
+      
+      <button id="play-button-cam2" class="play-button">
+        ▶️ Play Camera 2
+      </button>
+      
+      <p id="stream-status-cam2" class="stream-status">Ready to stream</p>
+    </div>
+
+  </div>
+
+  <!-- Load HLS.js for video playback -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  
+  <!-- Load the dual-camera stream control script -->
+  <script src="stream-control-dual.js"></script>
+</body>
+</html>
